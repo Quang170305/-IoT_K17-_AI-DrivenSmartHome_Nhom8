@@ -13,11 +13,11 @@ const App = (() => {
   'use strict';
 
   const CFG = {
-    brokerIP: localStorage.getItem('brokerIP') || '10.0.18.18',
-    wsPort:   localStorage.getItem('wsPort')   || '9001',
-    doorPIN:  localStorage.getItem('doorPIN')  || '123456',
-    mqttUser: localStorage.getItem('mqttUser') || '',
-    mqttPass: localStorage.getItem('mqttPass') || '',
+    brokerHost: localStorage.getItem('brokerHost') || '67c33f1aca2d4e9aad823a04f6ea8563.s1.eu.hivemq.cloud',
+    wsPort:     localStorage.getItem('wsPort')     || '8884',
+    doorPIN:  localStorage.getItem('doorPIN')  || '1234',
+    mqttUser: localStorage.getItem('mqttUser') || 'Quang1703',
+    mqttPass: localStorage.getItem('mqttPass') || 'Passkhongco1',
   };
 
   const T = {
@@ -38,7 +38,7 @@ const App = (() => {
     temp:0, hum:0, temp2:0, hum2:0,
     doorLocked:true, pinBuffer:'',
     acOn:false, acTarget:22, acAutoThresh:28, acAuto:true,
-    fanOn:false, fanSpeed:0,
+    fanOn:false, fanSpeed:0, fan2On:false, fan2Speed:0,
     curtainPos:100, curtainAuto:true,
     tempHistory:[], mqttClient:null, mqttConnected:false,
     guestTimer:null, guestEnd:null,
@@ -56,7 +56,7 @@ const App = (() => {
   }
 
   function mqttConnect() {
-    const url = `ws://${CFG.brokerIP}:${CFG.wsPort}/mqtt`;
+    const url = `wss://${CFG.brokerHost}:${CFG.wsPort}/mqtt`;
     log(`📡 MQTT → ${url}`, 'info');
     const opts = {
       clientId: 'nexthome_' + Math.random().toString(16).slice(2,8),
@@ -102,6 +102,19 @@ const App = (() => {
     } else if (topic === T.SENSOR2) {
       STATE.temp2 = +msg.temp || STATE.temp2;
       STATE.hum2  = +msg.hum  || STATE.hum2;
+      setEl('climate-temp2', STATE.temp2.toFixed(1));
+      setEl('climate-hum2',  STATE.hum2 + '%');
+      setEl('climate-feel2', heatIndex(STATE.temp2,STATE.hum2).toFixed(1)+'°');
+      const _ci2=document.getElementById('climate-index2');
+      if(_ci2){ const _h2=heatIndex(STATE.temp2,STATE.hum2); _ci2.textContent=_h2>39?'Nguy hiểm':_h2>32?'Rất nóng':_h2>27?'Nóng':'Bình thường'; }
+      STATE.tempHistory2 = STATE.tempHistory2 || [];
+      STATE.tempHistory2.push(STATE.temp2);
+      if (STATE.tempHistory2.length > 20) STATE.tempHistory2.shift();
+      setEl('climate-temp2', STATE.temp2.toFixed(1));
+      setEl('climate-hum2',  STATE.hum2 + '%');
+      setEl('climate-feel2', heatIndex(STATE.temp2, STATE.hum2).toFixed(1) + '°');
+      const hi2=heatIndex(STATE.temp2,STATE.hum2); const ci2=document.getElementById('climate-index2');
+      if(ci2) ci2.textContent=hi2>39?'Nguy hiểm':hi2>32?'Rất nóng':hi2>27?'Nóng':'Bình thường';
     } else if (topic === T.DOOR_EVT) {
       handleDoorEvent(msg);
     } else if (topic === T.STATUS) {
@@ -135,7 +148,7 @@ const App = (() => {
   function syncStatus(msg) {
     if (msg.temp1 !== undefined) { STATE.temp=msg.temp1; STATE.hum=msg.hum1; }
     if (msg.relay_ac !== undefined) { STATE.acOn=msg.relay_ac; applyAC(STATE.acOn); }
-    if (msg.fan_pwm !== undefined) { setFanSpeedUI(Math.round(msg.fan_pwm/255*100)); }
+    if (msg.fan_pwm !== undefined) { setFanSpeedUI(Math.round(msg.fan_pwm/255*100)); if(msg.fan2_pwm!==undefined) setFanSpeed(2,Math.round(msg.fan2_pwm/255*100)); }
     if (msg.servo_angle !== undefined) { updateCurtainVisual(Math.round((1-msg.servo_angle/90)*100)); }
     updateSensorUI();
     log(`📊 Sync ESP32: T=${msg.temp1}°C`,'ok');
@@ -156,6 +169,16 @@ const App = (() => {
     setEl('climate-temp',  STATE.temp.toFixed(1));
     setEl('climate-hum',   STATE.hum+'%');
     setEl('climate-feel',  heatIndex(STATE.temp,STATE.hum).toFixed(1)+'°');
+    // DHT22 #2
+    if (STATE.temp2) {
+      setEl('climate-temp2', STATE.temp2.toFixed(1));
+      setEl('climate-hum2',  STATE.hum2+'%');
+      setEl('climate-feel2', heatIndex(STATE.temp2,STATE.hum2).toFixed(1)+'°');
+      const hi2 = heatIndex(STATE.temp2,STATE.hum2);
+      const ci2 = document.getElementById('climate-index2');
+      if (ci2) ci2.textContent = hi2>39?'Nguy hiểm':hi2>35?'Rất nóng':hi2>32?'Nóng':'Bình thường';
+      updateSparkline2();
+    }
     const hi = heatIndex(STATE.temp,STATE.hum);
     const ci = document.getElementById('climate-index');
     if(ci){ ci.textContent=hi<27?'Normal':hi<32?'Caution':'Warning'; ci.style.color=hi<27?'var(--green)':hi<32?'var(--yellow)':'var(--red)'; }
@@ -319,10 +342,26 @@ const App = (() => {
   function toggleACauto(on){ STATE.acAuto=on; }
   function setACThresh(v){ STATE.acAutoThresh=parseFloat(v); }
 
-  function toggleFan(on){ STATE.fanOn=on; setFanSpeed(on?(STATE.fanSpeed||50):0); toast(on?'🌀 Bật quạt':'⭕ Tắt quạt',on?'ok':'info'); }
-  function setFanSpeed(v){
-    STATE.fanSpeed=parseInt(v); setFanSpeedUI(STATE.fanSpeed);
-    pub(T.CMD_FAN,{pwm:Math.round(STATE.fanSpeed/100*255)});
+  function toggleFan(n,on){
+    if(n===2){ STATE.fan2On=on; setFanSpeed(2,on?(STATE.fan2Speed||50):0); }
+    else     { STATE.fanOn=on;  setFanSpeed(1,on?(STATE.fanSpeed||50):0);  }
+    toast(on?`🌀 Bật quạt #${n}`:`⭕ Tắt quạt #${n}`,on?'ok':'info');
+  }
+  function setFanSpeed(n,v){
+    v=parseInt(v);
+    if(n===2){
+      STATE.fan2Speed=v; STATE.fan2On=v>0;
+      pub(T.CMD_FAN,{fan:2,pwm:Math.round(v/100*255)});
+      const s=document.getElementById('fan2-speed'); if(s) s.value=v;
+      setEl('fan2-speed-val',v+'%');
+      const bl=document.getElementById('fan2-blades');
+      if(bl) bl.style.animation=v===0?'none':`fan-spin ${((1-v/100)*1.2+0.15).toFixed(2)}s linear infinite`;
+      const tg=document.getElementById('fan2-toggle'); if(tg) tg.checked=v>0;
+      STATE.fan2On=v>0;
+    } else {
+      STATE.fanSpeed=v; setFanSpeedUI(v);
+      pub(T.CMD_FAN,{fan:1,pwm:Math.round(v/100*255)});
+    }
   }
   function setFanSpeedUI(v){
     const s=document.getElementById('fan-speed'); if(s) s.value=v;
@@ -332,7 +371,7 @@ const App = (() => {
     const tg=document.getElementById('fan-toggle'); if(tg) tg.checked=v>0;
     STATE.fanOn=v>0;
   }
-  function setFanPreset(v){ setFanSpeed(v); }
+  function setFanPreset(n,v){ setFanSpeed(n,v); }
 
   function setCurtain(pos){
     pos=Math.max(0,Math.min(100,parseInt(pos))); STATE.curtainPos=pos;
@@ -365,10 +404,12 @@ const App = (() => {
   function openModal(){ document.getElementById('config-modal').classList.add('open'); }
   function closeModal(){ document.getElementById('config-modal').classList.remove('open'); }
   function saveConfig(){
-    CFG.brokerIP=document.getElementById('esp-ip').value.trim();
+    CFG.brokerHost=document.getElementById('esp-ip').value.trim();
+    CFG.mqttUser=document.getElementById('mqtt-user').value.trim();
+    CFG.mqttPass=document.getElementById('mqtt-pass').value.trim();
     CFG.wsPort=document.getElementById('esp-port').value.trim();
     CFG.doorPIN=document.getElementById('door-pin-conf').value.trim();
-    localStorage.setItem('brokerIP',CFG.brokerIP); localStorage.setItem('wsPort',CFG.wsPort); localStorage.setItem('doorPIN',CFG.doorPIN);
+    localStorage.setItem('brokerHost',CFG.brokerHost); localStorage.setItem('wsPort',CFG.wsPort); localStorage.setItem('doorPIN',CFG.doorPIN); localStorage.setItem('mqttUser',CFG.mqttUser); localStorage.setItem('mqttPass',CFG.mqttPass);
     closeModal(); toast('💾 Đã lưu — kết nối lại MQTT','ok');
     if(STATE.mqttClient) STATE.mqttClient.end();
     setTimeout(mqttConnect,600);
@@ -391,10 +432,12 @@ const App = (() => {
   /* =========================================================  INIT  */
   function init(){
     startClock(); setCurtain(100);
-    const ipEl=document.getElementById('esp-ip'); if(ipEl) ipEl.value=CFG.brokerIP;
+    const ipEl=document.getElementById('esp-ip'); if(ipEl) ipEl.value=CFG.brokerHost;
+    const uEl=document.getElementById('mqtt-user'); if(uEl) uEl.value=CFG.mqttUser;
+    const pwEl=document.getElementById('mqtt-pass'); if(pwEl) pwEl.value=CFG.mqttPass;
     const pEl=document.getElementById('esp-port'); if(pEl) pEl.value=CFG.wsPort;
     log('✓ NEXTHOME khởi động','ok');
-    log(`📡 MQTT: ${CFG.brokerIP}:${CFG.wsPort}`,'info');
+    log(`📡 MQTT: ${CFG.brokerHost}:${CFG.wsPort}`,'info');
     log('ℹ Relay1=AC | Relay2=Đèn PK | Relay3=Đèn PN','info');
     log('ℹ L298N ENA→GPIO25 | Servo→GPIO18 | AS608→UART2','info');
     loadMqttLib(()=>{ mqttConnect(); setTimeout(()=>{ if(!STATE.mqttConnected) startDemoMode(); },5000); });
@@ -406,7 +449,7 @@ const App = (() => {
     simulateFingerprint, addFingerprint,
     remoteUnlock, remoteLock, guestAccess,
     toggleAC, adjustAC, toggleACauto, setACThresh,
-    toggleFan, setFanSpeed, setFanPreset,
+    toggleFan, setFanSpeed, setFanPreset, setFanSpeedUI,
     setCurtain, setCurtainPreset, toggleCurtainAuto,
     openModal, closeModal, saveConfig,
   };

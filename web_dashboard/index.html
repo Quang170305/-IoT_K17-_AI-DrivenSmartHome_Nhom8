@@ -253,19 +253,16 @@
     </section>
 
     <!-- ===== TAB: CLIMATE ===== -->
-    <section class="tab-section" id="tab-climate">
+        <section class="tab-section" id="tab-climate">
       <div class="tab-inner">
         <h2 class="section-title">🌡️ Điều khiển khí hậu</h2>
-
         <div class="climate-grid">
 
-          <!-- LIVE SENSOR -->
+          <!-- DHT22 #1 -->
           <div class="climate-card sensor-card">
-            <div class="sensor-title">📊 Cảm biến DHT22</div>
+            <div class="sensor-title">📊 DHT22 #1 <span class="sensor-badge">GPIO4</span></div>
             <div class="sensor-readout">
-              <div class="sensor-val-big">
-                <span id="climate-temp">--.-</span><sup>°C</sup>
-              </div>
+              <div class="sensor-val-big"><span id="climate-temp">--.-</span><sup>°C</sup></div>
               <div class="sensor-chart" id="temp-sparkline"></div>
             </div>
             <div class="sensor-row">
@@ -281,98 +278,90 @@
               </div>
               <div class="sensor-item">
                 <div class="s-icon">⚠️</div>
-                <div class="s-val" id="climate-index">Normal</div>
+                <div class="s-val" id="climate-index">--</div>
                 <div class="s-label">Chỉ số</div>
               </div>
             </div>
           </div>
 
-          <!-- AC CONTROL (Relay 1) -->
-          <div class="climate-card ac-card" id="ac-card">
-            <div class="ac-header">
-              <div class="ac-title">❄️ Điều hòa (Relay 1)</div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="ac-toggle" onchange="App.toggleAC(this.checked)"/>
-                <span class="ts-track"></span><span class="ts-thumb"></span>
-              </label>
+          <!-- DHT22 #2 -->
+          <div class="climate-card sensor-card">
+            <div class="sensor-title">📊 DHT22 #2 <span class="sensor-badge">GPIO15</span></div>
+            <div class="sensor-readout">
+              <div class="sensor-val-big"><span id="climate-temp2">--.-</span><sup>°C</sup></div>
+              <div class="sensor-chart" id="temp-sparkline2"></div>
             </div>
-            <div class="ac-target-row">
-              <button class="ac-arrow" onclick="App.adjustAC(-1)">▼</button>
-              <div class="ac-target-display">
-                <div class="ac-target-val" id="ac-target">22</div>
-                <div class="ac-target-unit">°C mục tiêu</div>
+            <div class="sensor-row">
+              <div class="sensor-item">
+                <div class="s-icon">💧</div>
+                <div class="s-val" id="climate-hum2">--%</div>
+                <div class="s-label">Độ ẩm</div>
               </div>
-              <button class="ac-arrow" onclick="App.adjustAC(1)">▲</button>
-            </div>
-            <div class="ac-auto-row">
-              <label class="check-label">
-                <input type="checkbox" id="ac-auto" checked onchange="App.toggleACauto(this.checked)"/>
-                Tự động bật khi > <span id="ac-thresh">28</span>°C
-              </label>
-              <input type="range" min="22" max="35" value="28" id="ac-thresh-slider"
-                oninput="document.getElementById('ac-thresh').textContent=this.value; App.setACThresh(this.value)"/>
-            </div>
-            <div class="relay-indicator" id="ac-relay">
-              <div class="relay-dot" id="ac-relay-dot"></div>
-              <span id="ac-relay-label">Relay 1: OFF</span>
+              <div class="sensor-item">
+                <div class="s-icon">🌡️</div>
+                <div class="s-val" id="climate-feel2">--°</div>
+                <div class="s-label">Cảm giác</div>
+              </div>
+              <div class="sensor-item">
+                <div class="s-icon">⚠️</div>
+                <div class="s-val" id="climate-index2">--</div>
+                <div class="s-label">Chỉ số</div>
+              </div>
             </div>
           </div>
 
-          <!-- FAN CONTROL (L298N) -->
+          <!-- QUẠT #1 -->
           <div class="climate-card fan-card" id="fan-card">
             <div class="ac-header">
-              <div class="ac-title">🌀 Quạt DC (L298N)</div>
+              <div class="ac-title">🌀 Quạt #1 <span class="sensor-badge">ENA·GPIO25</span></div>
               <label class="toggle-switch">
-                <input type="checkbox" id="fan-toggle" onchange="App.toggleFan(this.checked)"/>
+                <input type="checkbox" id="fan-toggle" onchange="App.toggleFan(1,this.checked)"/>
                 <span class="ts-track"></span><span class="ts-thumb"></span>
               </label>
             </div>
             <div class="fan-visual">
               <div class="fan-blade-wrap" id="fan-blades">
-                <div class="fan-blade b1"></div>
-                <div class="fan-blade b2"></div>
-                <div class="fan-blade b3"></div>
-                <div class="fan-center"></div>
+                <div class="fan-blade b1"></div><div class="fan-blade b2"></div>
+                <div class="fan-blade b3"></div><div class="fan-center"></div>
               </div>
             </div>
             <div class="speed-control">
               <div class="speed-label">Tốc độ PWM: <span id="fan-speed-val">0%</span></div>
               <input type="range" min="0" max="100" value="0" id="fan-speed"
-                oninput="App.setFanSpeed(this.value)"/>
+                oninput="App.setFanSpeed(1,this.value)"/>
               <div class="speed-presets">
-                <button onclick="App.setFanPreset(0)">Tắt</button>
-                <button onclick="App.setFanPreset(33)">Thấp</button>
-                <button onclick="App.setFanPreset(66)">Vừa</button>
-                <button onclick="App.setFanPreset(100)">Cao</button>
+                <button onclick="App.setFanPreset(1,0)">Tắt</button>
+                <button onclick="App.setFanPreset(1,33)">Thấp</button>
+                <button onclick="App.setFanPreset(1,66)">Vừa</button>
+                <button onclick="App.setFanPreset(1,100)">Cao</button>
               </div>
             </div>
           </div>
 
-          <!-- CURTAIN CONTROL (Servo) -->
-          <div class="climate-card curtain-card">
+          <!-- QUẠT #2 -->
+          <div class="climate-card fan-card" id="fan2-card">
             <div class="ac-header">
-              <div class="ac-title">🪟 Rèm cửa (Servo)</div>
+              <div class="ac-title">🌀 Quạt #2 <span class="sensor-badge">ENB·GPIO26</span></div>
               <label class="toggle-switch">
-                <input type="checkbox" id="curtain-auto" checked onchange="App.toggleCurtainAuto(this.checked)"/>
+                <input type="checkbox" id="fan2-toggle" onchange="App.toggleFan(2,this.checked)"/>
                 <span class="ts-track"></span><span class="ts-thumb"></span>
               </label>
             </div>
-            <div class="curtain-stage" id="curtain-stage">
-              <div class="curtain-bg">🌤️</div>
-              <div class="curtain-l-big" id="cl-big"></div>
-              <div class="curtain-r-big" id="cr-big"></div>
-            </div>
-            <div class="curtain-controls">
-              <div class="curtain-pos-label">Vị trí: <span id="curtain-pos">100%</span></div>
-              <input type="range" min="0" max="100" value="100" id="curtain-slider"
-                oninput="App.setCurtain(this.value)"/>
-              <div class="curtain-btns">
-                <button onclick="App.setCurtainPreset(100)">Mở hoàn toàn</button>
-                <button onclick="App.setCurtainPreset(50)">Nửa chừng</button>
-                <button onclick="App.setCurtainPreset(0)">Đóng hoàn toàn</button>
+            <div class="fan-visual">
+              <div class="fan-blade-wrap" id="fan2-blades">
+                <div class="fan-blade b1"></div><div class="fan-blade b2"></div>
+                <div class="fan-blade b3"></div><div class="fan-center"></div>
               </div>
-              <div class="auto-hint" id="curtain-auto-hint">
-                ✅ Tự đóng khi nhiệt độ > 28°C và có nắng
+            </div>
+            <div class="speed-control">
+              <div class="speed-label">Tốc độ PWM: <span id="fan2-speed-val">0%</span></div>
+              <input type="range" min="0" max="100" value="0" id="fan2-speed"
+                oninput="App.setFanSpeed(2,this.value)"/>
+              <div class="speed-presets">
+                <button onclick="App.setFanPreset(2,0)">Tắt</button>
+                <button onclick="App.setFanPreset(2,33)">Thấp</button>
+                <button onclick="App.setFanPreset(2,66)">Vừa</button>
+                <button onclick="App.setFanPreset(2,100)">Cao</button>
               </div>
             </div>
           </div>
@@ -389,18 +378,26 @@
   <!-- ESP32 CONFIG MODAL -->
   <div class="modal-overlay" id="config-modal">
     <div class="modal-box">
-      <div class="modal-title">⚙️ Cấu hình ESP32</div>
+      <div class="modal-title">⚙️ Cấu hình MQTT</div>
       <div class="modal-field">
-        <label>IP Address ESP32</label>
-        <input type="text" id="esp-ip" value="192.168.1.100" placeholder="192.168.1.xxx"/>
+        <label>MQTT Broker Host</label>
+        <input type="text" id="esp-ip" value="67c33f1aca2d4e9aad823a04f6ea8563.s1.eu.hivemq.cloud" placeholder="broker.hivemq.cloud"/>
       </div>
       <div class="modal-field">
-        <label>WebSocket Port</label>
-        <input type="text" id="esp-port" value="81" placeholder="81"/>
+        <label>WebSocket Port (WSS)</label>
+        <input type="text" id="esp-port" value="8884" placeholder="8884"/>
       </div>
       <div class="modal-field">
-        <label>Mã PIN cửa</label>
-        <input type="password" id="door-pin-conf" value="123456" placeholder="6 chữ số"/>
+        <label>Username</label>
+        <input type="text" id="mqtt-user" value="Quang1703" placeholder="mqtt username"/>
+      </div>
+      <div class="modal-field">
+        <label>Password</label>
+        <input type="password" id="mqtt-pass" value="Passkhongco1" placeholder="mqtt password"/>
+      </div>
+      <div class="modal-field">
+        <label>Mã PIN cửa (web)</label>
+        <input type="password" id="door-pin-conf" value="1234" placeholder="4-10 chữ số"/>
       </div>
       <div class="modal-actions">
         <button class="btn-primary" onclick="App.saveConfig()">💾 Lưu</button>

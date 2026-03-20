@@ -1,46 +1,58 @@
 #pragma once
 // ============================================================
-//  mqtt_handler.h — SMART DOOR
-//  WiFi + MQTT (chỉ điều khiển cửa, chưa có DHT22)
+//  mqtt_handler.h — SMART HOME
+//  WiFi + MQTT + DHT22 ×2 + Quạt DC
 // ============================================================
 //  Subscribe (Web → ESP32):
 //    home/cmd/door     → {"action":"unlock"|"lock"}
 //    home/cmd/password → {"new":"5678"}
+//    home/cmd/fan      → {"room":1,"action":"on"|"off"}
 //
 //  Publish (ESP32 → Web):
 //    home/door/event   → {type, detail, granted, time}
-//    home/status       → {door, uptime, ip}
+//    home/temp/room1   → {temp, humi, fan, time}
+//    home/temp/room2   → {temp, humi, fan, time}
+//    home/status       → {door, fan1, fan2, uptime, ip}
 //    home/online       → "1"
 // ============================================================
 
 #include <Arduino.h>
-#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
 // ── Cấu hình — SỬA 3 DÒNG NÀY ──────────────────────────────
-#define WIFI_SSID    "Quang1703"        // ← tên WiFi
-#define WIFI_PASS    "MAT_KHAU_WIFI"    // ← mật khẩu WiFi
-#define MQTT_SERVER  "10.25.81.69"      // ← IP máy tính
-#define MQTT_PORT    1883
-#define MQTT_CLIENT  "SmartDoor_ESP32"
+#define WIFI_SSID   "Quang1703"
+#define WIFI_PASS   "passkhongco"
+#define MQTT_SERVER "67c33f1aca2d4e9aad823a04f6ea8563.s1.eu.hivemq.cloud"
+#define MQTT_PORT   8883
+#define MQTT_CLIENT "SmartHome_ESP32"
+const char* mqtt_user = "Quang1703";
+const char* mqtt_pass = "Passkhongco1";
 
 // ── Topics ──────────────────────────────────────────────────
 #define T_CMD_DOOR  "home/cmd/door"
 #define T_CMD_PASS  "home/cmd/password"
+#define T_CMD_FAN   "home/cmd/fan"
 #define T_DOOR_EVT  "home/door/event"
+#define T_TEMP_1    "home/temp/room1"
+#define T_TEMP_2    "home/temp/room2"
 #define T_STATUS    "home/status"
 #define T_ONLINE    "home/online"
 
 // ── Extern từ main.cpp ──────────────────────────────────────
 extern bool    doorOpen;
 extern String  currentPassword;
+extern float   temp1, humi1, temp2, humi2;
+extern bool    fan1On, fan2On;
 extern void    unlockDoor(String method);
 extern void    lockDoor();
+extern void    setFan1(bool on);
+extern void    setFan2(bool on);
 
 // ── Objects ─────────────────────────────────────────────────
-WiFiClient   wifiClient;
-PubSubClient mqttClient(wifiClient);
+WiFiClientSecure wifiClient;
+PubSubClient     mqttClient(wifiClient);
 
 static unsigned long _lastReconnect = 0;
 static unsigned long _lastStatus    = 0;
@@ -57,15 +69,33 @@ void publishEvent(const char* type, const char* detail, bool granted) {
   char buf[256];
   serializeJson(doc, buf);
   mqttClient.publish(T_DOOR_EVT, buf);
-  Serial.printf("[MQTT] ↑ %s — %s\n", type, detail);
+  Serial.printf("[MQTT] ↑ event: %s — %s\n", type, detail);
+}
+
+void publishTempFan(int room, float temp, float humi, bool fanOn) {
+  StaticJsonDocument<128> doc;
+  doc["temp"] = serialized(String(temp, 1));
+  doc["humi"] = serialized(String(humi, 1));
+  doc["fan"]  = fanOn ? "on" : "off";
+  doc["time"] = millis() / 1000;
+  char buf[200];
+  serializeJson(doc, buf);
+  const char* topic = (room == 1) ? T_TEMP_1 : T_TEMP_2;
+  mqttClient.publish(topic, buf, true);
+  Serial.printf("[MQTT] ↑ room%d: %.1f°C %.1f%% fan=%s\n",
+                room, temp, humi, fanOn ? "ON" : "OFF");
 }
 
 void publishStatus() {
-  StaticJsonDocument<128> doc;
+  StaticJsonDocument<160> doc;
   doc["door"]   = doorOpen ? "open" : "locked";
+  doc["fan1"]   = fan1On   ? "on"   : "off";
+  doc["fan2"]   = fan2On   ? "on"   : "off";
+  doc["temp1"]  = serialized(String(temp1, 1));
+  doc["temp2"]  = serialized(String(temp2, 1));
   doc["uptime"] = millis() / 1000;
   doc["ip"]     = WiFi.localIP().toString();
-  char buf[200];
+  char buf[256];
   serializeJson(doc, buf);
   mqttClient.publish(T_STATUS, buf, true);
 }
@@ -83,7 +113,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
     Serial.println("[MQTT] ⚠ JSON lỗi"); return;
   }
 
-  // home/cmd/door
+  // ── home/cmd/door ──
   if (strcmp(topic, T_CMD_DOOR) == 0) {
     const char* action = doc["action"] | "";
     if (strcmp(action, "unlock") == 0) {
@@ -93,18 +123,33 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
       publishEvent("remote", "lock_command", true);
     }
   }
-  // home/cmd/password
+
+  // ── home/cmd/password ──
   else if (strcmp(topic, T_CMD_PASS) == 0) {
     const char* np = doc["new"] | "";
     int pl = strlen(np);
     if (pl >= 4 && pl <= 10) {
       currentPassword = String(np);
-      Serial.println("🔑 Mật khẩu đổi OK: " + currentPassword);
+      Serial.println("🔑 Mật khẩu mới: " + currentPassword);
       publishEvent("system", "password_changed", true);
     } else {
-      Serial.println("⚠ Mật khẩu không hợp lệ (4–10 ký tự)");
       publishEvent("system", "password_invalid", false);
     }
+  }
+
+  // ── home/cmd/fan ──
+  else if (strcmp(topic, T_CMD_FAN) == 0) {
+    int room         = doc["room"] | 0;
+    const char* act  = doc["action"] | "";
+    bool turnOn      = (strcmp(act, "on") == 0);
+    if (room == 1) {
+      setFan1(turnOn);
+      Serial.printf("[MQTT] Quạt P1 → %s\n", turnOn ? "BẬT" : "TẮT");
+    } else if (room == 2) {
+      setFan2(turnOn);
+      Serial.printf("[MQTT] Quạt P2 → %s\n", turnOn ? "BẬT" : "TẮT");
+    }
+    publishStatus();
   }
 }
 
@@ -128,10 +173,12 @@ void wifiConnect() {
 bool mqttConnect() {
   if (WiFi.status() != WL_CONNECTED) return false;
   Serial.printf("📡 MQTT → %s:%d ... ", MQTT_SERVER, MQTT_PORT);
-  if (mqttClient.connect(MQTT_CLIENT, nullptr, nullptr, T_ONLINE, 0, true, "0")) {
+  if (mqttClient.connect(MQTT_CLIENT, mqtt_user, mqtt_pass,
+                         T_ONLINE, 0, true, "0")) {
     Serial.println("✓ OK");
     mqttClient.subscribe(T_CMD_DOOR, 1);
     mqttClient.subscribe(T_CMD_PASS, 1);
+    mqttClient.subscribe(T_CMD_FAN,  1);
     mqttClient.publish(T_ONLINE, "1", true);
     publishStatus();
     return true;
@@ -145,6 +192,7 @@ bool mqttConnect() {
 // ============================================================
 void mqttSetup() {
   wifiConnect();
+  wifiClient.setInsecure();
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(512);
