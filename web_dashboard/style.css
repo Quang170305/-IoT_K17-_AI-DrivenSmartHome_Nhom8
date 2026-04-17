@@ -1,6 +1,6 @@
 /* ============================================================
    NEXTHOME — Smart ESP32 Dashboard
-   style.css
+   style.css (+ Emergency Lockdown styles)
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
@@ -28,6 +28,7 @@
   --glow-c: 0 0 24px rgba(0,212,255,0.25);
   --glow-g: 0 0 24px rgba(0,232,138,0.2);
   --glow-o: 0 0 24px rgba(255,122,53,0.2);
+  --glow-r: 0 0 24px rgba(255,61,90,0.4);
 
   --font-head: 'Syne', sans-serif;
   --font-mono: 'Space Mono', monospace;
@@ -69,6 +70,215 @@ body {
   background: repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, transparent 1px, transparent 3px);
   pointer-events: none; z-index: 0;
 }
+
+/* ============================================================
+   🚨 EMERGENCY LOCKDOWN OVERLAY
+   ============================================================ */
+.lockdown-overlay {
+  position: fixed; inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  /* Viền đỏ nhấp nháy xung quanh màn hình */
+  box-shadow: inset 0 0 0 0 rgba(255,61,90,0);
+}
+.lockdown-overlay.active {
+  opacity: 1;
+  pointer-events: none;  /* cho phép click qua để vẫn dùng được UI */
+  box-shadow: inset 0 0 80px rgba(255,61,90,0.15);
+  animation: lockdown-pulse 2s ease-in-out infinite;
+}
+@keyframes lockdown-pulse {
+  0%,100% { box-shadow: inset 0 0 80px rgba(255,61,90,0.10); }
+  50%      { box-shadow: inset 0 0 120px rgba(255,61,90,0.25); }
+}
+
+.lockdown-overlay-content {
+  position: absolute;
+  top: 80px; left: 50%; transform: translateX(-50%);
+  background: rgba(255,61,90,0.06);
+  border: 1px solid rgba(255,61,90,0.25);
+  border-radius: 16px;
+  padding: 16px 28px;
+  text-align: center;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+.lockdown-overlay-icon { font-size: 28px; margin-bottom: 4px; animation: shake-icon 1s ease-in-out infinite; }
+@keyframes shake-icon {
+  0%,100% { transform: rotate(0deg); }
+  20%     { transform: rotate(-8deg); }
+  40%     { transform: rotate(8deg); }
+  60%     { transform: rotate(-4deg); }
+  80%     { transform: rotate(4deg); }
+}
+.lockdown-overlay-title {
+  font-family: var(--font-mono);
+  font-size: 14px; font-weight: 700;
+  color: var(--red);
+  letter-spacing: 3px;
+}
+.lockdown-overlay-sub {
+  font-size: 11px;
+  color: rgba(255,61,90,0.7);
+  margin-top: 2px;
+  letter-spacing: 1px;
+}
+
+/* ── Lockdown badge trong header ── */
+.lockdown-header-badge {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 14px;
+  background: rgba(255,61,90,0.12);
+  border: 1px solid rgba(255,61,90,0.5);
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700;
+  color: var(--red);
+  letter-spacing: 1px;
+  animation: badge-glow 1.5s ease-in-out infinite;
+}
+@keyframes badge-glow {
+  0%,100% { box-shadow: 0 0 0 rgba(255,61,90,0); }
+  50%      { box-shadow: 0 0 16px rgba(255,61,90,0.4); }
+}
+.ld-pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  animation: blink 0.8s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--red);
+}
+
+/* ── Emergency Lockdown button (trong tab cửa) ── */
+.lockdown-section {
+  margin: 16px 0 8px;
+}
+
+.lockdown-btn {
+  width: 100%;
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 20px;
+  background: rgba(255,61,90,0.07);
+  border: 2px solid rgba(255,61,90,0.35);
+  border-radius: 14px;
+  cursor: pointer;
+  color: var(--red);
+  font-family: var(--font-head);
+  transition: all 0.25s;
+  position: relative; overflow: hidden;
+}
+.lockdown-btn::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,61,90,0.06), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.4s;
+}
+.lockdown-btn:hover {
+  background: rgba(255,61,90,0.14);
+  border-color: rgba(255,61,90,0.7);
+  box-shadow: var(--glow-r);
+  transform: translateY(-1px);
+}
+.lockdown-btn:hover::before { transform: translateX(100%); }
+
+.lockdown-btn.lockdown-active {
+  background: rgba(255,61,90,0.18);
+  border-color: var(--red);
+  box-shadow: var(--glow-r), 0 0 40px rgba(255,61,90,0.15);
+  animation: lockdown-btn-pulse 1.5s ease-in-out infinite;
+  color: #ff6b7a;
+}
+@keyframes lockdown-btn-pulse {
+  0%,100% { box-shadow: var(--glow-r), 0 0 20px rgba(255,61,90,0.15); }
+  50%      { box-shadow: 0 0 40px rgba(255,61,90,0.5), 0 0 60px rgba(255,61,90,0.2); }
+}
+
+.lockdown-btn.lockdown-active .ld-text {
+  color: var(--red);
+}
+
+.ld-icon { font-size: 22px; flex-shrink: 0; }
+.ld-content { flex: 1; text-align: left; }
+.ld-text {
+  display: block;
+  font-size: 14px; font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.ld-desc {
+  display: block;
+  font-size: 10px;
+  color: rgba(255,61,90,0.6);
+  margin-top: 2px;
+  letter-spacing: 1px;
+}
+.ld-arrow {
+  font-size: 18px;
+  opacity: 0.5;
+  transition: transform 0.2s;
+}
+.lockdown-btn:hover .ld-arrow { transform: translateX(4px); opacity: 1; }
+
+/* ── Emergency badge trên door-badge-home ── */
+.status-badge.emergency-badge {
+  background: rgba(255,61,90,0.15);
+  color: var(--red);
+  border-color: rgba(255,61,90,0.5);
+  animation: badge-glow 1.5s ease-in-out infinite;
+}
+
+/* ── Status pill emergency ── */
+.status-pill.emergency {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(255,61,90,0.1);
+  animation: badge-glow 1.5s ease-in-out infinite;
+  letter-spacing: 1.5px;
+  font-size: 11px;
+}
+
+/* ── Lockdown confirm modal ── */
+.lockdown-confirm-box {
+  border-color: rgba(255,61,90,0.4);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(255,61,90,0.15);
+}
+.lockdown-confirm-icon {
+  text-align: center; font-size: 48px; margin-bottom: 12px;
+  animation: shake-icon 1s ease-in-out infinite;
+}
+.lockdown-confirm-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.lockdown-list {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 10px 0;
+}
+.lockdown-list li {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--red);
+  padding: 6px 10px;
+  background: rgba(255,61,90,0.06);
+  border-radius: 6px;
+  border-left: 3px solid rgba(255,61,90,0.4);
+}
+
+.btn-danger {
+  flex: 1; padding: 11px;
+  background: linear-gradient(135deg, #ff3d5a, #cc1a35);
+  border: none; border-radius: 9px;
+  color: #fff; font-weight: 800;
+  font-family: var(--font-head);
+  font-size: 13px; letter-spacing: 1px;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-danger:hover { transform: translateY(-1px); box-shadow: var(--glow-r); }
 
 /* ============================================================
    HEADER
@@ -316,8 +526,6 @@ body {
 .curtain-left { left:0; transform-origin:left; }
 .curtain-right { right:0; transform-origin:right; }
 .curtain-label { position:absolute; bottom:4px; left:50%; transform:translateX(-50%); font-size:10px; color:var(--text-dim); white-space:nowrap; }
-
-/* ---- MOOD PREVIEW ---- */
 
 /* ---- LOG ---- */
 .log-card { grid-column: 3; grid-row: 1/3; cursor:default; }
@@ -601,34 +809,6 @@ body {
 }
 .toggle-switch input:checked ~ .ts-thumb { transform:translateX(20px); }
 
-.toggle-switch.mini { width:36px; height:20px; }
-.toggle-switch.mini .ts-thumb { width:14px; height:14px; }
-.toggle-switch.mini input:checked ~ .ts-thumb { transform:translateX(16px); }
-
-.ac-target-row {
-  display:flex; align-items:center; justify-content:center; gap:16px; margin:14px 0;
-}
-.ac-arrow {
-  width:36px; height:36px;
-  background:var(--surface2);
-  border:1px solid var(--border);
-  border-radius:8px; font-size:16px; color:var(--cyan);
-  cursor:pointer; transition:all 0.2s;
-}
-.ac-arrow:hover { border-color:var(--cyan); box-shadow:var(--glow-c); }
-.ac-target-display { text-align:center; }
-.ac-target-val {
-  font-family:var(--font-mono);
-  font-size:36px; font-weight:700;
-  color:var(--cyan);
-  text-shadow:var(--glow-c);
-}
-.ac-target-unit { font-size:11px; color:var(--text-dim); }
-
-.ac-auto-row { margin-top:12px; }
-.check-label { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); cursor:pointer; }
-.check-label input { accent-color:var(--cyan); width:14px; height:14px; }
-
 input[type=range] {
   width:100%; height:4px; border-radius:2px;
   background:rgba(255,255,255,0.08);
@@ -644,27 +824,13 @@ input[type=range]::-webkit-slider-thumb {
   box-shadow:0 0 8px rgba(0,212,255,0.5);
 }
 
-.relay-indicator {
-  display:flex; align-items:center; gap:8px; margin-top:12px;
-  padding:7px 12px;
-  background:var(--surface2);
-  border-radius:8px;
-  font-family:var(--font-mono);
-  font-size:11px; color:var(--text-dim);
-}
-.relay-dot {
-  width:8px; height:8px; border-radius:50%;
-  background:var(--border);
-  transition:background 0.3s;
-}
-.relay-dot.on { background:var(--green); box-shadow:var(--glow-g); }
-
 /* FAN */
 .fan-visual { display:flex; justify-content:center; margin:14px 0; }
 .fan-blade-wrap {
   width:80px; height:80px;
   position:relative;
   display:flex; align-items:center; justify-content:center;
+  transform-origin: center center !important;
 }
 .fan-blade {
   position:absolute; width:30px; height:10px;
@@ -677,8 +843,9 @@ input[type=range]::-webkit-slider-thumb {
 .b3 { transform:rotate(240deg) translateX(10px); }
 .fan-center { width:12px; height:12px; background:var(--cyan); border-radius:50%; z-index:1; box-shadow:var(--glow-c); }
 
-.fan-spinning { animation:fan-spin 0.5s linear infinite; }
-.fan-spinning-slow { animation:fan-spin 1.2s linear infinite; }
+#fan2-blades { animation: none; }
+#fan-blades  { animation: none; }
+
 @keyframes fan-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 
 .speed-control { }
@@ -691,38 +858,6 @@ input[type=range]::-webkit-slider-thumb {
   cursor:pointer; transition:all 0.15s;
 }
 .speed-presets button:hover { border-color:var(--cyan); color:var(--cyan); }
-
-/* CURTAIN */
-.curtain-stage {
-  position:relative; height:80px;
-  border-radius:8px; overflow:hidden;
-  margin:10px 0;
-  background:linear-gradient(180deg, #1a3a5c, #0a1a28);
-  border:1px solid var(--border);
-}
-.curtain-bg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:28px; opacity:0.3; }
-.curtain-l-big, .curtain-r-big {
-  position:absolute; top:0; bottom:0;
-  width:50%;
-  background:linear-gradient(180deg, #2a3f55, #1a2d3e);
-  transition:width 0.5s ease;
-}
-.curtain-l-big { left:0; }
-.curtain-r-big { right:0; }
-.curtain-pos-label { font-size:12px; color:var(--text-dim); }
-.curtain-btns { display:flex; gap:5px; margin-top:8px; }
-.curtain-btns button {
-  flex:1; padding:6px 4px;
-  background:var(--bg); border:1px solid var(--border);
-  border-radius:6px; color:var(--text-dim); font-size:11px;
-  cursor:pointer; transition:all 0.2s;
-}
-.curtain-btns button:hover { border-color:var(--blue); color:var(--blue); }
-.auto-hint { font-size:11px; color:var(--green); margin-top:8px; opacity:0.8; }
-
-/* ============================================================
-   TAB: LIGHT
-   ============================================================ */
 
 /* ============================================================
    TOAST
@@ -767,7 +902,7 @@ input[type=range]::-webkit-slider-thumb {
   background:var(--surface);
   border:1px solid var(--border2);
   border-radius:20px;
-  padding:28px; width:360px;
+  padding:28px; width:380px;
   box-shadow:0 20px 60px rgba(0,0,0,0.6);
   animation:fadeIn 0.25s ease;
 }
@@ -825,6 +960,16 @@ input[type=range]::-webkit-slider-thumb {
 .fab:hover { border-color:var(--cyan); box-shadow:var(--glow-c); transform:scale(1.08); }
 
 /* ============================================================
+   SENSOR BADGE
+   ============================================================ */
+.sensor-badge {
+  font-size:0.65rem; background:rgba(0,212,255,0.15); color:#00d4ff;
+  border:1px solid rgba(0,212,255,0.3); border-radius:4px;
+  padding:1px 6px; margin-left:6px;
+  font-family:Space Mono,monospace; vertical-align:middle;
+}
+
+/* ============================================================
    SCROLLBAR
    ============================================================ */
 ::-webkit-scrollbar { width:4px; }
@@ -840,17 +985,11 @@ input[type=range]::-webkit-slider-thumb {
   .overview-grid { grid-template-columns:1fr; }
   .log-card { grid-column:auto; grid-row:auto; }
   .unlock-methods { grid-template-columns:1fr; }
+  .lockdown-overlay-content { white-space:normal; width:90%; }
 }
 @media(max-width:600px) {
   .header { padding:10px 12px; }
   .main-grid { padding:12px; }
   .stat-strip { grid-template-columns:1fr 1fr; gap:8px; }
   .brand-name { font-size:16px; }
-  .moods-grid { grid-template-columns:repeat(2,1fr); }
-}
-.sensor-badge {
-  font-size:0.65rem; background:rgba(0,212,255,0.15); color:#00d4ff;
-  border:1px solid rgba(0,212,255,0.3); border-radius:4px;
-  padding:1px 6px; margin-left:6px;
-  font-family:Space Mono,monospace; vertical-align:middle;
 }

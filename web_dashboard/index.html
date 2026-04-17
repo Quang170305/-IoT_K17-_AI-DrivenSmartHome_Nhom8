@@ -15,6 +15,16 @@
   <div class="bg-orb orb3"></div>
   <div class="scanline"></div>
 
+  <!-- 🚨 LOCKDOWN OVERLAY — phủ toàn màn hình khi bật -->
+  <div class="lockdown-overlay" id="lockdown-overlay">
+    <div class="lockdown-overlay-content">
+      <div class="lockdown-overlay-icon">🚨</div>
+      <div class="lockdown-overlay-title">EMERGENCY LOCKDOWN</div>
+      <div class="lockdown-overlay-sub">Tất cả phương thức mở khóa đã bị vô hiệu hóa</div>
+      <div class="lockdown-overlay-sub">RFID · Keypad · Web Remote · Guest Access</div>
+    </div>
+  </div>
+
   <!-- ======= HEADER ======= -->
   <header class="header">
     <div class="header-brand">
@@ -37,6 +47,11 @@
       </div>
       <div class="chip chip--blue">
         <span>📡</span> 192.168.1.100
+      </div>
+      <!-- 🔴 LOCKDOWN BADGE trong header -->
+      <div class="lockdown-header-badge" id="lockdown-badge" style="display:none">
+        <span class="ld-pulse"></span>
+        🚨 LOCKDOWN ACTIVE
       </div>
       <div class="header-time">
         <div id="clock" class="clock-display">--:--:--</div>
@@ -179,6 +194,18 @@
             <div class="status-pill blue" id="door-last-action">Lần cuối: --</div>
           </div>
 
+          <!-- 🚨 EMERGENCY LOCKDOWN BUTTON (trong tab cửa) -->
+          <div class="lockdown-section">
+            <button class="lockdown-btn" id="lockdown-btn">
+              <span class="ld-icon">🔴</span>
+              <div class="ld-content">
+                <span class="ld-text">KHÓA KHẨN CẤP</span>
+                <span class="ld-desc">Vô hiệu hóa RFID · Keypad · Web · Tất cả</span>
+              </div>
+              <span class="ld-arrow">→</span>
+            </button>
+          </div>
+
           <!-- UNLOCK METHODS -->
           <div class="unlock-methods">
 
@@ -253,7 +280,7 @@
     </section>
 
     <!-- ===== TAB: CLIMATE ===== -->
-        <section class="tab-section" id="tab-climate">
+    <section class="tab-section" id="tab-climate">
       <div class="tab-inner">
         <h2 class="section-title">🌡️ Điều khiển khí hậu</h2>
         <div class="climate-grid">
@@ -286,7 +313,7 @@
 
           <!-- DHT22 #2 -->
           <div class="climate-card sensor-card">
-            <div class="sensor-title">📊 DHT22 #2 <span class="sensor-badge">GPIO15</span></div>
+            <div class="sensor-title">📊 DHT22 #2 <span class="sensor-badge">GPIO16</span></div>
             <div class="sensor-readout">
               <div class="sensor-val-big"><span id="climate-temp2">--.-</span><sup>°C</sup></div>
               <div class="sensor-chart" id="temp-sparkline2"></div>
@@ -313,7 +340,7 @@
           <!-- QUẠT #1 -->
           <div class="climate-card fan-card" id="fan-card">
             <div class="ac-header">
-              <div class="ac-title">🌀 Quạt #1 <span class="sensor-badge">ENA·GPIO25</span></div>
+              <div class="ac-title">🌀 Quạt #1 <span class="sensor-badge">Relay·GPIO15</span></div>
               <label class="toggle-switch">
                 <input type="checkbox" id="fan-toggle" onchange="App.toggleFan(1,this.checked)"/>
                 <span class="ts-track"></span><span class="ts-thumb"></span>
@@ -341,7 +368,7 @@
           <!-- QUẠT #2 -->
           <div class="climate-card fan-card" id="fan2-card">
             <div class="ac-header">
-              <div class="ac-title">🌀 Quạt #2 <span class="sensor-badge">ENB·GPIO26</span></div>
+              <div class="ac-title">🌀 Quạt #2 <span class="sensor-badge">Relay·GPIO2</span></div>
               <label class="toggle-switch">
                 <input type="checkbox" id="fan2-toggle" onchange="App.toggleFan(2,this.checked)"/>
                 <span class="ts-track"></span><span class="ts-thumb"></span>
@@ -374,6 +401,45 @@
 
   <!-- NOTIFICATION TOAST -->
   <div class="toast-container" id="toast-container"></div>
+
+  <!-- 🚨 CONFIRM MODAL: Bật Lockdown -->
+  <div class="modal-overlay" id="lockdown-confirm-modal">
+    <div class="modal-box lockdown-confirm-box">
+      <div class="lockdown-confirm-icon">🚨</div>
+      <div class="modal-title" style="color:var(--red);text-align:center">XÁC NHẬN KHÓA KHẨN CẤP</div>
+      <p class="lockdown-confirm-desc">
+        Khi bật, <strong>tất cả</strong> phương thức mở cửa sẽ bị vô hiệu hóa hoàn toàn:
+      </p>
+      <ul class="lockdown-list">
+        <li>⛔ Keypad vật lý (mã PIN)</li>
+        <li>⛔ Thẻ RFID</li>
+        <li>⛔ Mở từ xa qua Web</li>
+        <li>⛔ Chế độ mở cho khách</li>
+      </ul>
+      <p class="lockdown-confirm-desc" style="color:var(--yellow);margin-top:8px">
+        Chỉ có thể gỡ bỏ qua nút này hoặc MQTT.
+      </p>
+      <div class="modal-actions">
+        <button class="btn-danger" id="lockdown-confirm-yes">🚨 XÁC NHẬN KHÓA</button>
+        <button class="btn-secondary" id="lockdown-confirm-no">Huỷ bỏ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ CONFIRM MODAL: Tắt Lockdown -->
+  <div class="modal-overlay" id="unlock-confirm-modal">
+    <div class="modal-box">
+      <div style="text-align:center;font-size:40px;margin-bottom:12px">✅</div>
+      <div class="modal-title" style="color:var(--green);text-align:center">GỠ BỎ LOCKDOWN</div>
+      <p class="lockdown-confirm-desc">
+        Xác nhận gỡ bỏ chế độ khóa khẩn cấp? Hệ thống sẽ hoạt động bình thường trở lại.
+      </p>
+      <div class="modal-actions">
+        <button class="btn-primary" id="unlock-confirm-yes">✅ Gỡ bỏ Lockdown</button>
+        <button class="btn-secondary" id="unlock-confirm-no">Huỷ bỏ</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ESP32 CONFIG MODAL -->
   <div class="modal-overlay" id="config-modal">

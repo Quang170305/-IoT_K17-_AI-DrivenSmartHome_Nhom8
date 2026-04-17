@@ -1,19 +1,21 @@
 #pragma once
 // ============================================================
 //  mqtt_handler.h — SMART HOME
-//  WiFi + MQTT + DHT22 ×2 + Quạt DC
+//  WiFi + MQTT + DHT22 ×2 + Quạt DC + Emergency Lockdown
 // ============================================================
 //  Subscribe (Web → ESP32):
-//    home/cmd/door     → {"action":"unlock"|"lock"}
-//    home/cmd/password → {"new":"5678"}
-//    home/cmd/fan      → {"room":1,"action":"on"|"off"}
+//    home/cmd/door      → {"action":"unlock"|"lock"}
+//    home/cmd/password  → {"new":"5678"}
+//    home/cmd/fan       → {"room":1,"action":"on"|"off"}
+//    home/cmd/lockdown  → {"active":true|false}   ← MỚI
 //
 //  Publish (ESP32 → Web):
-//    home/door/event   → {type, detail, granted, time}
-//    home/temp/room1   → {temp, humi, fan, time}
-//    home/temp/room2   → {temp, humi, fan, time}
-//    home/status       → {door, fan1, fan2, uptime, ip}
-//    home/online       → "1"
+//    home/door/event    → {type, detail, granted, time}
+//    home/temp/room1    → {temp, humi, fan, time}
+//    home/temp/room2    → {temp, humi, fan, time}
+//    home/status        → {door, fan1, fan2, lockdown, uptime, ip}
+//    home/online        → "1"
+//    home/lockdown      → {"active":true|false}   ← MỚI
 // ============================================================
 
 #include <Arduino.h>
@@ -21,7 +23,6 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// ── Cấu hình — SỬA 3 DÒNG NÀY ──────────────────────────────
 #define WIFI_SSID   "Quang1703"
 #define WIFI_PASS   "passkhongco"
 #define MQTT_SERVER "67c33f1aca2d4e9aad823a04f6ea8563.s1.eu.hivemq.cloud"
@@ -31,24 +32,29 @@ const char* mqtt_user = "Quang1703";
 const char* mqtt_pass = "Passkhongco1";
 
 // ── Topics ──────────────────────────────────────────────────
-#define T_CMD_DOOR  "home/cmd/door"
-#define T_CMD_PASS  "home/cmd/password"
-#define T_CMD_FAN   "home/cmd/fan"
-#define T_DOOR_EVT  "home/door/event"
-#define T_TEMP_1    "home/temp/room1"
-#define T_TEMP_2    "home/temp/room2"
-#define T_STATUS    "home/status"
-#define T_ONLINE    "home/online"
+#define T_CMD_DOOR      "home/cmd/door"
+#define T_CMD_PASS      "home/cmd/password"
+#define T_CMD_FAN       "home/cmd/fan"
+#define T_CMD_LOCKDOWN  "home/cmd/lockdown"   // ← MỚI
+#define T_DOOR_EVT      "home/door/event"
+#define T_TEMP_1        "home/temp/room1"
+#define T_TEMP_2        "home/temp/room2"
+#define T_STATUS        "home/status"
+#define T_ONLINE        "home/online"
+#define T_LOCKDOWN      "home/lockdown"        // ← MỚI
 
 // ── Extern từ main.cpp ──────────────────────────────────────
 extern bool    doorOpen;
 extern String  currentPassword;
 extern float   temp1, humi1, temp2, humi2;
 extern bool    fan1On, fan2On;
+extern bool    fan1Manual, fan2Manual;
+extern bool    emergencyLock;                  // ← MỚI
 extern void    unlockDoor(String method);
 extern void    lockDoor();
-extern void    setFan1(bool on);
-extern void    setFan2(bool on);
+extern void    setFan1(bool on, bool manual);
+extern void    setFan2(bool on, bool manual);
+extern void    setEmergencyLock(bool active);  // ← MỚI
 
 // ── Objects ─────────────────────────────────────────────────
 WiFiClientSecure wifiClient;
@@ -86,16 +92,30 @@ void publishTempFan(int room, float temp, float humi, bool fanOn) {
                 room, temp, humi, fanOn ? "ON" : "OFF");
 }
 
+// ── MỚI: Publish trạng thái lockdown riêng ─────────────────
+void publishLockdownStatus() {
+  StaticJsonDocument<64> doc;
+  doc["active"] = emergencyLock;
+  doc["time"]   = millis() / 1000;
+  char buf[128];
+  serializeJson(doc, buf);
+  mqttClient.publish(T_LOCKDOWN, buf, true);  // retain=true để web biết ngay khi kết nối
+  Serial.printf("[MQTT] ↑ lockdown: %s\n", emergencyLock ? "ACTIVE" : "INACTIVE");
+}
+
 void publishStatus() {
-  StaticJsonDocument<160> doc;
-  doc["door"]   = doorOpen ? "open" : "locked";
-  doc["fan1"]   = fan1On   ? "on"   : "off";
-  doc["fan2"]   = fan2On   ? "on"   : "off";
-  doc["temp1"]  = serialized(String(temp1, 1));
-  doc["temp2"]  = serialized(String(temp2, 1));
-  doc["uptime"] = millis() / 1000;
-  doc["ip"]     = WiFi.localIP().toString();
-  char buf[256];
+  StaticJsonDocument<256> doc;
+  doc["door"]      = doorOpen      ? "open"   : "locked";
+  doc["fan1"]      = fan1On        ? "on"     : "off";
+  doc["fan2"]      = fan2On        ? "on"     : "off";
+  doc["fan1Mode"]  = fan1Manual    ? "manual" : "auto";
+  doc["fan2Mode"]  = fan2Manual    ? "manual" : "auto";
+  doc["lockdown"]  = emergencyLock ? true     : false;   // ← MỚI
+  doc["temp1"]     = serialized(String(temp1, 1));
+  doc["temp2"]     = serialized(String(temp2, 1));
+  doc["uptime"]    = millis() / 1000;
+  doc["ip"]        = WiFi.localIP().toString();
+  char buf[320];
   serializeJson(doc, buf);
   mqttClient.publish(T_STATUS, buf, true);
 }
@@ -113,14 +133,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
     Serial.println("[MQTT] ⚠ JSON lỗi"); return;
   }
 
+  // ── home/cmd/lockdown ── (ƯU TIÊN XỬ LÝ ĐẦU TIÊN)
+  if (strcmp(topic, T_CMD_LOCKDOWN) == 0) {
+    bool active = doc["active"] | false;
+    setEmergencyLock(active);
+    // publishLockdownStatus() và publishStatus() đã được gọi trong setEmergencyLock()
+    return;
+  }
+
   // ── home/cmd/door ──
   if (strcmp(topic, T_CMD_DOOR) == 0) {
     const char* action = doc["action"] | "";
     if (strcmp(action, "unlock") == 0) {
+      // unlockDoor() tự kiểm tra emergencyLock bên trong
       unlockDoor("WEB REMOTE");
     } else if (strcmp(action, "lock") == 0) {
       lockDoor();
       publishEvent("remote", "lock_command", true);
+      publishStatus();
     }
   }
 
@@ -139,15 +169,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
 
   // ── home/cmd/fan ──
   else if (strcmp(topic, T_CMD_FAN) == 0) {
-    int room         = doc["room"] | 0;
-    const char* act  = doc["action"] | "";
-    bool turnOn      = (strcmp(act, "on") == 0);
-    if (room == 1) {
-      setFan1(turnOn);
-      Serial.printf("[MQTT] Quạt P1 → %s\n", turnOn ? "BẬT" : "TẮT");
-    } else if (room == 2) {
-      setFan2(turnOn);
-      Serial.printf("[MQTT] Quạt P2 → %s\n", turnOn ? "BẬT" : "TẮT");
+    int room        = doc["room"] | 0;
+    const char* act = doc["action"] | "";
+
+    if (strcmp(act, "auto") == 0) {
+      if (room == 1) { fan1Manual = false; Serial.println("[MQTT] Quạt P1 → AUTO"); }
+      if (room == 2) { fan2Manual = false; Serial.println("[MQTT] Quạt P2 → AUTO"); }
+    } else {
+      bool turnOn = (strcmp(act, "on") == 0);
+      if (room == 1) {
+        setFan1(turnOn, true);
+        Serial.printf("[MQTT] Quạt P1 → %s [MANUAL]\n", turnOn ? "BẬT" : "TẮT");
+      } else if (room == 2) {
+        setFan2(turnOn, true);
+        Serial.printf("[MQTT] Quạt P2 → %s [MANUAL]\n", turnOn ? "BẬT" : "TẮT");
+      }
     }
     publishStatus();
   }
@@ -176,10 +212,12 @@ bool mqttConnect() {
   if (mqttClient.connect(MQTT_CLIENT, mqtt_user, mqtt_pass,
                          T_ONLINE, 0, true, "0")) {
     Serial.println("✓ OK");
-    mqttClient.subscribe(T_CMD_DOOR, 1);
-    mqttClient.subscribe(T_CMD_PASS, 1);
-    mqttClient.subscribe(T_CMD_FAN,  1);
+    mqttClient.subscribe(T_CMD_DOOR,     1);
+    mqttClient.subscribe(T_CMD_PASS,     1);
+    mqttClient.subscribe(T_CMD_FAN,      1);
+    mqttClient.subscribe(T_CMD_LOCKDOWN, 1);   // ← MỚI
     mqttClient.publish(T_ONLINE, "1", true);
+    publishLockdownStatus();   // ← Gửi trạng thái lockdown hiện tại ngay khi kết nối
     publishStatus();
     return true;
   }
@@ -210,7 +248,6 @@ void mqttLoop() {
   }
   mqttClient.loop();
 
-  // Gửi status mỗi 15 giây
   if (millis() - _lastStatus > 15000) {
     _lastStatus = millis();
     if (mqttClient.connected()) publishStatus();
