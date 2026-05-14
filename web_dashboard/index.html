@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartHome — ESP32 Control</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+  <!-- BACKGROUND AMBIANCE -->
+  <div class="bg-orb orb1"></div>
+  <div class="bg-orb orb2"></div>
+  <div class="bg-orb orb3"></div>
+  <div class="scanline"></div>
+
+  <!-- 🚨 LOCKDOWN OVERLAY — phủ toàn màn hình khi bật -->
+  <div class="lockdown-overlay" id="lockdown-overlay">
+    <div class="lockdown-overlay-content">
+      <div class="lockdown-overlay-icon">🚨</div>
+      <div class="lockdown-overlay-title">EMERGENCY LOCKDOWN</div>
+      <div class="lockdown-overlay-sub">Tất cả phương thức mở khóa đã bị vô hiệu hóa</div>
+      <div class="lockdown-overlay-sub">RFID · Keypad · Web Remote · Guest Access</div>
+    </div>
+  </div>
+
+  <!-- ======= HEADER ======= -->
+  <header class="header">
+    <div class="header-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 3L33 14V33H3V14L18 3Z" stroke="currentColor" stroke-width="2" fill="none"/>
+          <circle cx="18" cy="20" r="5" fill="currentColor" opacity="0.3"/>
+          <circle cx="18" cy="20" r="2" fill="currentColor"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-name">NEXTHOME</h1>
+        <p class="brand-sub">ESP32 Smart Controller</p>
+      </div>
+    </div>
+
+    <div class="header-status-row">
+      <div class="chip chip--green" id="ws-status">
+        <span class="chip-dot"></span> WiFi Connected
+      </div>
+      <div class="chip chip--blue">
+        <span>📡</span> 192.168.1.100
+      </div>
+      <!-- 🔴 LOCKDOWN BADGE trong header -->
+      <div class="lockdown-header-badge" id="lockdown-badge" style="display:none">
+        <span class="ld-pulse"></span>
+        🚨 LOCKDOWN ACTIVE
+      </div>
+      <div class="header-time">
+        <div id="clock" class="clock-display">--:--:--</div>
+        <div id="date-display" class="clock-date">---</div>
+      </div>
+    </div>
+
+    <nav class="header-nav">
+      <button class="nav-pill active" data-tab="home" onclick="App.switchTab(this)">🏠 Tổng quan</button>
+      <button class="nav-pill" data-tab="door" onclick="App.switchTab(this)">🚪 Cửa</button>
+      <button class="nav-pill" data-tab="climate" onclick="App.switchTab(this)">🌡️ Khí hậu</button>
+    </nav>
+  </header>
+
+  <!-- ======= MAIN ======= -->
+  <main class="main-grid">
+
+    <!-- ===== TAB: HOME ===== -->
+    <section class="tab-section active" id="tab-home">
+
+      <!-- STAT STRIP -->
+      <div class="stat-strip">
+        <div class="stat-card" id="stat-temp">
+          <div class="stat-icon">🌡️</div>
+          <div class="stat-body">
+            <div class="stat-value" id="temp-display">--.-°C</div>
+            <div class="stat-label">Nhiệt độ</div>
+          </div>
+          <div class="stat-bar"><div class="stat-fill" id="temp-bar" style="width:40%"></div></div>
+        </div>
+        <div class="stat-card" id="stat-hum">
+          <div class="stat-icon">💧</div>
+          <div class="stat-body">
+            <div class="stat-value" id="hum-display">--%</div>
+            <div class="stat-label">Độ ẩm</div>
+          </div>
+          <div class="stat-bar"><div class="stat-fill blue" id="hum-bar" style="width:55%"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⚡</div>
+          <div class="stat-body">
+            <div class="stat-value" id="power-display">0.8 kW</div>
+            <div class="stat-label">Điện tiêu thụ</div>
+          </div>
+          <div class="stat-bar"><div class="stat-fill purple" style="width:20%"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🏠</div>
+          <div class="stat-body">
+            <div class="stat-value" id="device-active">5/7</div>
+            <div class="stat-label">Thiết bị hoạt động</div>
+          </div>
+          <div class="stat-bar"><div class="stat-fill green" style="width:71%"></div></div>
+        </div>
+      </div>
+
+      <!-- OVERVIEW GRID -->
+      <div class="overview-grid">
+
+        <!-- DOOR PREVIEW -->
+        <div class="ov-card door-preview" onclick="App.switchTabById('door')">
+          <div class="ov-header">
+            <span class="ov-title">Cửa Chính</span>
+            <span class="status-badge" id="door-badge-home">🔒 Khóa</span>
+          </div>
+          <div class="door-visual" id="door-visual-home">
+            <div class="door-frame">
+              <div class="door-panel" id="door-panel-home">
+                <div class="door-handle"></div>
+              </div>
+            </div>
+          </div>
+          <p class="ov-hint">Nhấn để điều khiển →</p>
+        </div>
+
+        <!-- CLIMATE PREVIEW -->
+        <div class="ov-card climate-preview" onclick="App.switchTabById('climate')">
+          <div class="ov-header">
+            <span class="ov-title">Điều hòa & Rèm</span>
+            <span class="status-badge green" id="ac-badge-home">OFF</span>
+          </div>
+          <div class="climate-gauges">
+            <div class="radial-gauge" id="home-gauge">
+              <svg viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="6"/>
+                <circle cx="40" cy="40" r="32" fill="none" stroke="url(#gaugeGrad)" stroke-width="6"
+                  stroke-linecap="round" stroke-dasharray="201" id="gauge-circle"
+                  stroke-dashoffset="120" transform="rotate(-90 40 40)"/>
+                <defs>
+                  <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#00d4ff"/>
+                    <stop offset="100%" stop-color="#ff6b35"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div class="gauge-text" id="home-gauge-text">--°</div>
+            </div>
+            <div class="curtain-mini" id="curtain-mini">
+              <div class="curtain-left" id="curtain-l"></div>
+              <div class="curtain-right" id="curtain-r"></div>
+              <div class="curtain-label">Rèm: <span id="curtain-status">Mở</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LOG -->
+        <div class="ov-card log-card">
+          <div class="ov-header"><span class="ov-title">📋 Nhật ký hệ thống</span></div>
+          <div class="log-list" id="log-list">
+            <div class="log-row ok">✓ Hệ thống khởi động</div>
+            <div class="log-row ok">✓ DHT22 kết nối thành công</div>
+            <div class="log-row info">ℹ WiFi IP: 192.168.1.100</div>
+            <div class="log-row warn">⚠ Nhiệt độ đang tăng: 29°C</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===== TAB: DOOR ===== -->
+    <section class="tab-section" id="tab-door">
+      <div class="tab-inner">
+
+        <div class="door-main-card">
+          <h2 class="section-title">🚪 Điều khiển cửa thông minh</h2>
+
+          <!-- Door status visual -->
+          <div class="door-stage">
+            <div class="door-big-frame">
+              <div class="door-big-panel" id="door-big">
+                <div class="door-big-handle" id="door-handle-anim"></div>
+                <div class="door-window"></div>
+              </div>
+            </div>
+            <div class="door-lock-icon" id="lock-icon">🔒</div>
+          </div>
+
+          <div class="door-status-row">
+            <div class="status-pill" id="door-status-pill">LOCKED</div>
+            <div class="status-pill blue" id="door-last-action">Lần cuối: --</div>
+          </div>
+
+          <!-- 🚨 EMERGENCY LOCKDOWN BUTTON (trong tab cửa) -->
+          <div class="lockdown-section">
+            <button class="lockdown-btn" id="lockdown-btn">
+              <span class="ld-icon">🔴</span>
+              <div class="ld-content">
+                <span class="ld-text">KHÓA KHẨN CẤP</span>
+                <span class="ld-desc">Vô hiệu hóa RFID · Keypad · Web · Tất cả</span>
+              </div>
+              <span class="ld-arrow">→</span>
+            </button>
+          </div>
+
+          <!-- UNLOCK METHODS -->
+          <div class="unlock-methods">
+
+            <!-- PIN -->
+            <div class="method-card" id="method-pin">
+              <div class="method-title">🔢 Mã PIN</div>
+              <div class="pin-display" id="pin-display">_ _ _ _ </div>
+              <div class="numpad">
+                <button class="num-btn" onclick="App.pinInput(1)">1</button>
+                <button class="num-btn" onclick="App.pinInput(2)">2</button>
+                <button class="num-btn" onclick="App.pinInput(3)">3</button>
+                <button class="num-btn" onclick="App.pinInput(4)">4</button>
+                <button class="num-btn" onclick="App.pinInput(5)">5</button>
+                <button class="num-btn" onclick="App.pinInput(6)">6</button>
+                <button class="num-btn" onclick="App.pinInput(7)">7</button>
+                <button class="num-btn" onclick="App.pinInput(8)">8</button>
+                <button class="num-btn" onclick="App.pinInput(9)">9</button>
+                <button class="num-btn clear" onclick="App.pinClear()">⌫</button>
+                <button class="num-btn" onclick="App.pinInput(0)">0</button>
+                <button class="num-btn confirm" onclick="App.pinConfirm()">✓</button>
+              </div>
+              <p class="method-hint">Mã mặc định: 1 2 3 4</p>
+            </div>
+
+            <!-- FINGERPRINT -->
+            <div class="method-card" id="method-fp">
+              <div class="method-title">👆 Vân tay (AS608)</div>
+              <div class="fp-scanner" id="fp-scanner" onclick="App.simulateFingerprint()">
+                <div class="fp-ring fp-ring1"></div>
+                <div class="fp-ring fp-ring2"></div>
+                <div class="fp-ring fp-ring3"></div>
+                <div class="fp-icon">👆</div>
+                <div class="fp-label" id="fp-label">Đặt ngón tay</div>
+              </div>
+              <div class="fp-users">
+                <div class="fp-user">ID#1 — Chủ nhà ✓</div>
+                <div class="fp-user">ID#2 — Thành viên ✓</div>
+                <div class="fp-user add" onclick="App.addFingerprint()">+ Thêm vân tay</div>
+              </div>
+            </div>
+
+            <!-- REMOTE -->
+            <div class="method-card" id="method-remote">
+              <div class="method-title">📱 Mở từ xa</div>
+              <div class="remote-btns">
+                <button class="remote-btn unlock-btn" onclick="App.remoteUnlock()">
+                  <span class="remote-icon">🔓</span>
+                  <span>MỞ KHÓA</span>
+                </button>
+                <button class="remote-btn lock-btn" onclick="App.remoteLock()">
+                  <span class="remote-icon">🔒</span>
+                  <span>KHÓA LẠI</span>
+                </button>
+              </div>
+              <div class="guest-section">
+                <div class="guest-title">👥 Mở cho khách</div>
+                <div class="guest-options">
+                  <button class="guest-btn" onclick="App.guestAccess(5)">5 phút</button>
+                  <button class="guest-btn" onclick="App.guestAccess(30)">30 phút</button>
+                  <button class="guest-btn" onclick="App.guestAccess(60)">1 giờ</button>
+                  <button class="guest-btn" onclick="App.guestAccess(0)">Hôm nay</button>
+                </div>
+                <div class="guest-timer" id="guest-timer" style="display:none">
+                  ⏱ Khách vào: <span id="guest-countdown">--:--</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== TAB: CLIMATE ===== -->
+    <section class="tab-section" id="tab-climate">
+      <div class="tab-inner">
+        <h2 class="section-title">🌡️ Điều khiển khí hậu</h2>
+        <div class="climate-grid">
+
+          <!-- DHT22 #1 -->
+          <div class="climate-card sensor-card">
+            <div class="sensor-title">📊 DHT22 #1 <span class="sensor-badge">GPIO4</span></div>
+            <div class="sensor-readout">
+              <div class="sensor-val-big"><span id="climate-temp">--.-</span><sup>°C</sup></div>
+              <div class="sensor-chart" id="temp-sparkline"></div>
+            </div>
+            <div class="sensor-row">
+              <div class="sensor-item">
+                <div class="s-icon">💧</div>
+                <div class="s-val" id="climate-hum">--%</div>
+                <div class="s-label">Độ ẩm</div>
+              </div>
+              <div class="sensor-item">
+                <div class="s-icon">🌡️</div>
+                <div class="s-val" id="climate-feel">--°</div>
+                <div class="s-label">Cảm giác</div>
+              </div>
+              <div class="sensor-item">
+                <div class="s-icon">⚠️</div>
+                <div class="s-val" id="climate-index">--</div>
+                <div class="s-label">Chỉ số</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DHT22 #2 -->
+          <div class="climate-card sensor-card">
+            <div class="sensor-title">📊 DHT22 #2 <span class="sensor-badge">GPIO16</span></div>
+            <div class="sensor-readout">
+              <div class="sensor-val-big"><span id="climate-temp2">--.-</span><sup>°C</sup></div>
+              <div class="sensor-chart" id="temp-sparkline2"></div>
+            </div>
+            <div class="sensor-row">
+              <div class="sensor-item">
+                <div class="s-icon">💧</div>
+                <div class="s-val" id="climate-hum2">--%</div>
+                <div class="s-label">Độ ẩm</div>
+              </div>
+              <div class="sensor-item">
+                <div class="s-icon">🌡️</div>
+                <div class="s-val" id="climate-feel2">--°</div>
+                <div class="s-label">Cảm giác</div>
+              </div>
+              <div class="sensor-item">
+                <div class="s-icon">⚠️</div>
+                <div class="s-val" id="climate-index2">--</div>
+                <div class="s-label">Chỉ số</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- QUẠT #1 -->
+          <div class="climate-card fan-card" id="fan-card">
+            <div class="ac-header">
+              <div class="ac-title">🌀 Quạt #1 <span class="sensor-badge">Relay·GPIO15</span></div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="fan-toggle" onchange="App.toggleFan(1,this.checked)"/>
+                <span class="ts-track"></span><span class="ts-thumb"></span>
+              </label>
+            </div>
+            <div class="fan-visual">
+              <div class="fan-blade-wrap" id="fan-blades">
+                <div class="fan-blade b1"></div><div class="fan-blade b2"></div>
+                <div class="fan-blade b3"></div><div class="fan-center"></div>
+              </div>
+            </div>
+            <div class="speed-control">
+              <div class="speed-label">Tốc độ PWM: <span id="fan-speed-val">0%</span></div>
+              <input type="range" min="0" max="100" value="0" id="fan-speed"
+                oninput="App.setFanSpeed(1,this.value)"/>
+              <div class="speed-presets">
+                <button onclick="App.setFanPreset(1,0)">Tắt</button>
+                <button onclick="App.setFanPreset(1,33)">Thấp</button>
+                <button onclick="App.setFanPreset(1,66)">Vừa</button>
+                <button onclick="App.setFanPreset(1,100)">Cao</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- QUẠT #2 -->
+          <div class="climate-card fan-card" id="fan2-card">
+            <div class="ac-header">
+              <div class="ac-title">🌀 Quạt #2 <span class="sensor-badge">Relay·GPIO2</span></div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="fan2-toggle" onchange="App.toggleFan(2,this.checked)"/>
+                <span class="ts-track"></span><span class="ts-thumb"></span>
+              </label>
+            </div>
+            <div class="fan-visual">
+              <div class="fan-blade-wrap" id="fan2-blades">
+                <div class="fan-blade b1"></div><div class="fan-blade b2"></div>
+                <div class="fan-blade b3"></div><div class="fan-center"></div>
+              </div>
+            </div>
+            <div class="speed-control">
+              <div class="speed-label">Tốc độ PWM: <span id="fan2-speed-val">0%</span></div>
+              <input type="range" min="0" max="100" value="0" id="fan2-speed"
+                oninput="App.setFanSpeed(2,this.value)"/>
+              <div class="speed-presets">
+                <button onclick="App.setFanPreset(2,0)">Tắt</button>
+                <button onclick="App.setFanPreset(2,33)">Thấp</button>
+                <button onclick="App.setFanPreset(2,66)">Vừa</button>
+                <button onclick="App.setFanPreset(2,100)">Cao</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- NOTIFICATION TOAST -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- 🚨 CONFIRM MODAL: Bật Lockdown -->
+  <div class="modal-overlay" id="lockdown-confirm-modal">
+    <div class="modal-box lockdown-confirm-box">
+      <div class="lockdown-confirm-icon">🚨</div>
+      <div class="modal-title" style="color:var(--red);text-align:center">XÁC NHẬN KHÓA KHẨN CẤP</div>
+      <p class="lockdown-confirm-desc">
+        Khi bật, <strong>tất cả</strong> phương thức mở cửa sẽ bị vô hiệu hóa hoàn toàn:
+      </p>
+      <ul class="lockdown-list">
+        <li>⛔ Keypad vật lý (mã PIN)</li>
+        <li>⛔ Thẻ RFID</li>
+        <li>⛔ Mở từ xa qua Web</li>
+        <li>⛔ Chế độ mở cho khách</li>
+      </ul>
+      <p class="lockdown-confirm-desc" style="color:var(--yellow);margin-top:8px">
+        Chỉ có thể gỡ bỏ qua nút này hoặc MQTT.
+      </p>
+      <div class="modal-actions">
+        <button class="btn-danger" id="lockdown-confirm-yes">🚨 XÁC NHẬN KHÓA</button>
+        <button class="btn-secondary" id="lockdown-confirm-no">Huỷ bỏ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ CONFIRM MODAL: Tắt Lockdown -->
+  <div class="modal-overlay" id="unlock-confirm-modal">
+    <div class="modal-box">
+      <div style="text-align:center;font-size:40px;margin-bottom:12px">✅</div>
+      <div class="modal-title" style="color:var(--green);text-align:center">GỠ BỎ LOCKDOWN</div>
+      <p class="lockdown-confirm-desc">
+        Xác nhận gỡ bỏ chế độ khóa khẩn cấp? Hệ thống sẽ hoạt động bình thường trở lại.
+      </p>
+      <div class="modal-actions">
+        <button class="btn-primary" id="unlock-confirm-yes">✅ Gỡ bỏ Lockdown</button>
+        <button class="btn-secondary" id="unlock-confirm-no">Huỷ bỏ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESP32 CONFIG MODAL -->
+  <div class="modal-overlay" id="config-modal">
+    <div class="modal-box">
+      <div class="modal-title">⚙️ Cấu hình MQTT</div>
+      <div class="modal-field">
+        <label>MQTT Broker Host</label>
+        <input type="text" id="esp-ip" value="67c33f1aca2d4e9aad823a04f6ea8563.s1.eu.hivemq.cloud" placeholder="broker.hivemq.cloud"/>
+      </div>
+      <div class="modal-field">
+        <label>WebSocket Port (WSS)</label>
+        <input type="text" id="esp-port" value="8884" placeholder="8884"/>
+      </div>
+      <div class="modal-field">
+        <label>Username</label>
+        <input type="text" id="mqtt-user" value="Quang1703" placeholder="mqtt username"/>
+      </div>
+      <div class="modal-field">
+        <label>Password</label>
+        <input type="password" id="mqtt-pass" value="Passkhongco1" placeholder="mqtt password"/>
+      </div>
+      <div class="modal-field">
+        <label>Mã PIN cửa (web)</label>
+        <input type="password" id="door-pin-conf" value="1234" placeholder="4-10 chữ số"/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="App.saveConfig()">💾 Lưu</button>
+        <button class="btn-secondary" onclick="App.closeModal()">Huỷ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAB CONFIG BUTTON -->
+  <button class="fab" onclick="App.openModal()" title="Cài đặt ESP32">⚙️</button>
+
+  <script src="app.js"></script>
+</body>
+</html>

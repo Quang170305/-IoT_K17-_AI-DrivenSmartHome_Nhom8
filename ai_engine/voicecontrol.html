@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Home Voice</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: sans-serif; background: #0f172a; color: #e2e8f0;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 24px 16px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; color: #f8fafc; }
+  .subtitle { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+  .status-bar {
+    width: 100%; max-width: 440px; background: #1e293b;
+    border-radius: 12px; padding: 12px 16px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; flex-shrink: 0; transition: background 0.3s; }
+  .dot.connected { background: #22c55e; }
+  .status-text { font-size: 13px; color: #94a3b8; }
+  .config-card {
+    width: 100%; max-width: 440px; background: #1e293b;
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  }
+  .config-card h3 { font-size: 12px; color: #64748b; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+  .hint { font-size: 11px; color: #475569; margin-top: 3px; }
+  .field input {
+    width: 100%; padding: 8px 12px; background: #0f172a;
+    border: 1px solid #334155; border-radius: 8px; color: #e2e8f0;
+    font-size: 13px; outline: none;
+  }
+  .field input:focus { border-color: #6366f1; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btn-connect {
+    width: 100%; padding: 10px; background: #6366f1; color: white;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 500;
+    cursor: pointer; margin-top: 4px; transition: background 0.2s;
+  }
+  .btn-connect:hover { background: #4f46e5; }
+  .btn-connect:disabled { background: #334155; cursor: default; }
+  .mic-wrap { display: flex; flex-direction: column; align-items: center; margin: 8px 0 16px; }
+  .mic-btn {
+    width: 90px; height: 90px; border-radius: 50%; border: none;
+    cursor: pointer; background: #1e293b;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .mic-btn svg { width: 38px; height: 38px; }
+  .mic-btn.listening { background: #dc2626; animation: pulse 1.2s ease-out infinite; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
+    70%  { box-shadow: 0 0 0 20px rgba(220,38,38,0); }
+    100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+  }
+  .mic-label { margin-top: 10px; font-size: 13px; color: #64748b; }
+  .bubble-wrap { width: 100%; max-width: 440px; margin-bottom: 12px; }
+  .bubble { background: #1e293b; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; min-height: 48px; }
+  .bubble-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .bubble-text { font-size: 15px; color: #e2e8f0; min-height: 20px; }
+  .cmd-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; margin-right: 6px; margin-top: 4px; }
+  .cmd-unlock { background: #14532d; color: #86efac; }
+  .cmd-lock   { background: #292524; color: #a8a29e; }
+  .cmd-fan-on { background: #1e3a5f; color: #93c5fd; }
+  .cmd-fan-off{ background: #2d1b1b; color: #fca5a5; }
+  .cmd-unknown{ background: #292524; color: #d6d3d1; }
+  .log-card { width: 100%; max-width: 440px; background: #1e293b; border-radius: 12px; padding: 12px 16px; }
+  .log-card h3 { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+  #log { font-size: 12px; color: #64748b; max-height: 200px; overflow-y: auto; }
+  #log p { padding: 2px 0; border-bottom: 1px solid #0f172a; font-family: monospace; }
+  #log p:last-child { border: none; }
+  .log-ok   { color: #4ade80; }
+  .log-err  { color: #f87171; }
+  .log-info { color: #60a5fa; }
+</style>
+</head>
+<body>
+
+<h1>Smart Home Voice</h1>
+<p class="subtitle">Nói lệnh — AI hiểu — ESP32 thực thi</p>
+
+<div class="status-bar">
+  <div class="dot" id="dot"></div>
+  <span class="status-text" id="status-text">Chưa kết nối MQTT</span>
+</div>
+
+<div class="config-card">
+  <h3>Gemini AI</h3>
+  <div class="field">
+    <label>Gemini API Key</label>
+    <input id="gemini-key" type="password" placeholder="AIza...">
+    <p class="hint">Bỏ trống → dùng rule-based (không cần internet)</p>
+  </div>
+</div>
+
+<div class="config-card">
+  <h3>MQTT Broker</h3>
+  <div class="field">
+    <label>Host</label>
+    <input id="broker-url" placeholder="xxxx.s1.eu.hivemq.cloud">
+    <p class="hint">Chỉ dán host — tự động thêm wss:// và :8884/mqtt</p>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Username</label>
+      <input id="broker-user" placeholder="mqtt username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input id="broker-pass" type="password" placeholder="••••••">
+    </div>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Topic cửa</label>
+      <input id="topic-door" value="home/cmd/door">
+    </div>
+    <div class="field">
+      <label>Topic quạt</label>
+      <input id="topic-fan" value="home/cmd/fan">
+    </div>
+  </div>
+  <button class="btn-connect" id="btn-connect" onclick="connectMQTT()">Kết nối MQTT</button>
+</div>
+
+<div class="mic-wrap">
+  <button class="mic-btn" id="mic-btn" onclick="toggleListen()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="2" width="6" height="13" rx="3"/>
+      <path d="M5 10a7 7 0 0 0 14 0"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+      <line x1="8" y1="22" x2="16" y2="22"/>
+    </svg>
+  </button>
+  <span class="mic-label" id="mic-label">Nhấn để nói</span>
+</div>
+
+<div class="bubble-wrap">
+  <div class="bubble">
+    <div class="bubble-label">Bạn nói:</div>
+    <div class="bubble-text" id="transcript">—</div>
+  </div>
+  <div class="bubble">
+    <div class="bubble-label">AI hiểu lệnh:</div>
+    <div class="bubble-text" id="cmd-display">—</div>
+  </div>
+</div>
+
+<div class="log-card">
+  <h3>Nhật ký</h3>
+  <div id="log"><p>Sẵn sàng.</p></div>
+</div>
+
+<script>
+let mqttClient = null, recognition = null, listening = false;
+
+// ── MQTT ─────────────────────────────────────────────────────
+function connectMQTT() {
+  let host = document.getElementById('broker-url').value.trim();
+  if (!host) { addLog('Nhập host broker!', 'err'); return; }
+  host = host.replace(/^(wss?|mqtts?):\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
+  const url = 'wss://' + host + ':8884/mqtt';
+
+  const user = document.getElementById('broker-user').value.trim();
+  const pass = document.getElementById('broker-pass').value.trim();
+
+  if (mqttClient) { try { mqttClient.end(true); } catch(e){} }
+
+  const opts = {
+    clientId: 'voice_' + Math.random().toString(16).slice(2,8),
+    reconnectPeriod: 0,
+    connectTimeout: 8000,
+    rejectUnauthorized: false,
+  };
+  if (user) { opts.username = user; opts.password = pass; }
+
+  addLog('Kết nối: ' + url, 'info');
+  setBtnState(true);
+  mqttClient = mqtt.connect(url, opts);
+
+  mqttClient.on('connect', () => {
+    setStatus(true, 'Đã kết nối: ' + host);
+    addLog('Kết nối thành công!', 'ok');
+    setBtnState(false, 'Kết nối lại');
+  });
+  mqttClient.on('error', (e) => {
+    setStatus(false, 'Lỗi kết nối');
+    addLog('Lỗi: ' + (e.message||e), 'err');
+    setBtnState(false);
+  });
+  mqttClient.on('close', () => {
+    if (!mqttClient.connected) { setStatus(false, 'Mất kết nối'); setBtnState(false); }
+  });
+  setTimeout(() => {
+    if (mqttClient && !mqttClient.connected) {
+      addLog('Timeout — kiểm tra host, user, pass', 'err');
+      try { mqttClient.end(true); } catch(e){}
+      setStatus(false, 'Timeout'); setBtnState(false);
+    }
+  }, 9000);
+}
+
+function setBtnState(loading, label) {
+  const b = document.getElementById('btn-connect');
+  b.disabled = loading;
+  b.textContent = loading ? 'Đang kết nối...' : (label || 'Kết nối MQTT');
+}
+function setStatus(ok, msg) {
+  document.getElementById('dot').className = 'dot' + (ok ? ' connected' : '');
+  document.getElementById('status-text').textContent = msg;
+}
+
+// ── PUBLISH — đúng format ESP32 + web dashboard ───────────────
+function publish(topic, payload) {
+  if (!mqttClient || !mqttClient.connected) {
+    addLog('Chưa kết nối MQTT!', 'err'); return;
+  }
+  // payload luôn là object → serialize JSON
+  const str = JSON.stringify(payload);
+  mqttClient.publish(topic, str, { qos: 1 });
+  addLog('PUB [' + topic + '] → ' + str, 'ok');
+}
+
+// ── Web Speech API ────────────────────────────────────────────
+function toggleListen() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    addLog('Dùng Chrome! Trình duyệt này không hỗ trợ.', 'err'); return;
+  }
+  if (listening) { recognition && recognition.stop(); setListening(false); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'vi-VN';
+  recognition.interimResults = false;
+
+  recognition.onstart  = () => { setListening(true); addLog('Đang nghe...', 'info'); };
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('transcript').textContent = text;
+    addLog('Nhận: "' + text + '"', 'info');
+    processWithAI(text);
+  };
+  recognition.onerror = (e) => { addLog('Lỗi mic: ' + e.error, 'err'); setListening(false); };
+  recognition.onend   = () => setListening(false);
+  recognition.start();
+}
+function setListening(on) {
+  listening = on;
+  document.getElementById('mic-btn').className = 'mic-btn' + (on ? ' listening' : '');
+  document.getElementById('mic-label').textContent = on ? 'Đang nghe...' : 'Nhấn để nói';
+}
+
+// ── Gemini AI ─────────────────────────────────────────────────
+async function processWithAI(text) {
+  const key = document.getElementById('gemini-key').value.trim();
+  if (!key) { executeCommand(ruleBasedParse(text)); return; }
+
+  const prompt = `Phân tích lệnh smart home tiếng Việt, trả về JSON duy nhất không giải thích:
+Câu: "${text}"
+JSON hợp lệ:
+{"action":"unlock"}
+{"action":"lock"}
+{"action":"fan","room":1,"action2":"on"}
+
+Thực ra chỉ dùng các dạng này:
+{"action":"unlock"}
+{"action":"lock"}
+{"action":"fan","room":1,"fanAction":"on"}
+{"action":"fan","room":1,"fanAction":"off"}
+{"action":"fan","room":2,"fanAction":"on"}
+{"action":"fan","room":2,"fanAction":"off"}
+{"action":"fan","room":"all","fanAction":"on"}
+{"action":"fan","room":"all","fanAction":"off"}
+{"action":"unknown"}`;
+
+  try {
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key,
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }] }) }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{"action":"unknown"}';
+    const cmd = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    // Chuẩn hóa field fanAction → action cho ESP32
+    if (cmd.action === 'fan' && cmd.fanAction) {
+      cmd.fanAction = cmd.fanAction; // giữ nguyên, xử lý trong executeCommand
+    }
+    executeCommand(cmd);
+  } catch(err) {
+    addLog('Gemini lỗi: ' + err.message + ' → fallback', 'err');
+    executeCommand(ruleBasedParse(text));
+  }
+}
+
+// ── Rule-based fallback ───────────────────────────────────────
+function ruleBasedParse(text) {
+  const t = text.toLowerCase();
+  if (t.includes('mở cửa') || t.includes('unlock'))  return { action:'unlock' };
+  if (t.includes('khóa cửa') || t.includes('lock'))  return { action:'lock' };
+
+  const on  = t.includes('bật quạt') || t.includes('bật fan') || t.includes('mở quạt');
+  const off = t.includes('tắt quạt') || t.includes('tắt fan') || t.includes('tắt');
+
+  if (on || off) {
+    const fanAction = on ? 'on' : 'off';
+    if (t.includes('phòng 1') || t.includes('một') || t.includes('1'))
+      return { action:'fan', room:1, fanAction };
+    if (t.includes('phòng 2') || t.includes('hai') || t.includes('2'))
+      return { action:'fan', room:2, fanAction };
+    return { action:'fan', room:'all', fanAction };
+  }
+  return { action:'unknown' };
+}
+
+// ── Thực thi lệnh → MQTT ─────────────────────────────────────
+// ✅ Payload khớp chính xác với mqtt_handler.h của ESP32:
+//    Cửa : { action: "unlock" | "lock" }
+//    Quạt: { room: 1|2, action: "on" | "off" }
+function executeCommand(cmd) {
+  const topicDoor = document.getElementById('topic-door').value;
+  const topicFan  = document.getElementById('topic-fan').value;
+  const display   = document.getElementById('cmd-display');
+  display.innerHTML = '';
+
+  if (cmd.action === 'unlock') {
+    display.innerHTML = '<span class="cmd-badge cmd-unlock">Mở cửa</span>';
+    // ✅ ESP32 chờ: { action: "unlock" }
+    publish(topicDoor, { action: 'unlock' });
+
+  } else if (cmd.action === 'lock') {
+    display.innerHTML = '<span class="cmd-badge cmd-lock">Khóa cửa</span>';
+    // ✅ ESP32 chờ: { action: "lock" }
+    publish(topicDoor, { action: 'lock' });
+
+  } else if (cmd.action === 'fan') {
+    // fanAction từ Gemini hoặc rule-based
+    const fanState = cmd.fanAction || cmd.state || 'on';
+    const cls   = fanState === 'on' ? 'cmd-fan-on' : 'cmd-fan-off';
+    const label = (fanState==='on'?'Bật':'Tắt')+' quạt '+(cmd.room==='all'?'tất cả':'phòng '+cmd.room);
+    display.innerHTML = `<span class="cmd-badge ${cls}">${label}</span>`;
+
+    // ✅ ESP32 chờ: { room: 1, action: "on" | "off" }
+    if (cmd.room === 'all') {
+      publish(topicFan, { room: 1, action: fanState });
+      publish(topicFan, { room: 2, action: fanState });
+    } else {
+      publish(topicFan, { room: cmd.room, action: fanState });
+    }
+
+  } else {
+    display.innerHTML = '<span class="cmd-badge cmd-unknown">Không hiểu lệnh</span>';
+    addLog('Không nhận ra lệnh — thử lại', 'err');
+  }
+}
+
+// ── Log ───────────────────────────────────────────────────────
+function addLog(msg, type='') {
+  const log = document.getElementById('log');
+  const p = document.createElement('p');
+  p.className = type ? 'log-'+type : '';
+  p.textContent = new Date().toLocaleTimeString('vi') + '  ' + msg;
+  log.prepend(p);
+  if (log.children.length > 50) log.removeChild(log.lastChild);
+}
+</script>
+</body>
+</html>
